@@ -1,0 +1,35 @@
+# Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfvars
+.terraform.lock.hcl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+env3/
+.venv/
+
+# Render
+/data/  # Persistent disk data, managed by Render
+entries.db  # SQLite database, handled by bot
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# General
+*.log
+*.bak
+.env  # Environment variables file, if used locally
