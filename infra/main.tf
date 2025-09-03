@@ -1,12 +1,12 @@
-# resource "render_postgres" "event_db" {
-#   name = "event-data-db"
-#   plan = "free" # Updated from 'starter' to 'free' (or choose 'basic_256mb', 'pro_4gb', etc.)
-#   region = "oregon"
-#   environment_id = var.dev_environment_id
-#   version = "13"
-#   database_name = "red_legion_event_db"
-#   database_user = "event_user"
-# }
+resource "render_postgres" "event_db" {
+  name = "event-data-db"
+  plan = "free" # Updated from 'starter' to 'free' (or choose 'basic_256mb', 'pro_4gb', etc.)
+  region = "oregon"
+  environment_id = var.dev_environment_id
+  version = "13"
+  database_name = "red_legion_event_db"
+  database_user = "event_user"
+}
 
 resource "render_background_worker" "participation_bot" {
   name = "participation-bot"
