@@ -1,62 +1,127 @@
-resource "render_postgres" "event_db" {
-  name = "event-data-db"
-  plan = "free" # Updated from 'starter' to 'free' (or choose 'basic_256mb', 'pro_4gb', etc.)
-  region = "oregon"
-  environment_id = var.dev_environment_id
-  version = "13"
-  database_name = "red_legion_event_db"
-  database_user = "event_user"
+provider "google" {
+  project = var.gcp_project_id
+  region  = "us-central1"
 }
 
-resource "render_background_worker" "participation_bot" {
-  name = "participation-bot"
-  plan = "starter"
-  region = "oregon"
-  environment_id = var.dev_environment_id
-  start_command = "python bots/participation_bot.py"
-  runtime_source = {
-    native_runtime = {
-      auto_deploy = true
-      branch = "feature/dual-bots-sqlite"
-      build_command = "pip install -r requirements.txt"
-      repo_url = var.github_repo
-      runtime = "python"
+# Reference existing secrets
+data "google_secret_manager_secret_version" "discord_token" {
+  secret  = "discord-token"
+  version = "latest"
+}
+
+data "google_secret_manager_secret_version" "db_password" {
+  secret  = "db-password"
+  version = "latest"
+}
+
+# Cloud SQL for PostgreSQL (Free Tier)
+resource "google_sql_database_instance" "event_db" {
+  name             = "event-data-db"
+  database_version = "POSTGRES_13"
+  region           = "us-central1"
+  settings {
+    tier      = "db-f1-micro" # Free tier
+    disk_size = 10 # 10 GB
+    ip_configuration {
+      ipv4_enabled = true
+    }
+    backup_configuration {
+      enabled = false # Disable backups to minimize costs
     }
   }
-  env_vars = {
-    DISCORD_TOKEN = { value = var.discord_token }
-    TEXT_CHANNEL_ID = { value = var.text_channel_id }
-    DATABASE_URL = { value = render_postgres.event_db.connection_info.internal_connection_string }
-  }
-  num_instances = 1
 }
 
-resource "render_web_service" "dashboard_bot" {
-  name = "dashboard-bot"
-  plan = "starter"
-  region = "oregon"
-  environment_id = var.dev_environment_id
-  start_command = "python bots/dashboard_bot.py"
-  runtime_source = {
-    native_runtime = {
-      auto_deploy = true
-      branch = "feature/dual-bots-sqlite"
-      build_command = "pip install -r requirements.txt"
-      repo_url = var.github_repo
-      runtime = "python"
+resource "google_sql_database" "red_legion_event_db" {
+  name     = "red_legion_event_db"
+  instance = google_sql_database_instance.event_db.name
+}
+
+resource "google_sql_user" "event_user" {
+  name     = "event_user"
+  instance = google_sql_database_instance.event_db.name
+  password = var.db_password
+}
+
+# Compute Engine for Participation Bot (Free Tier)
+resource "google_compute_instance" "participation_bot" {
+  name         = "participation-bot"
+  machine_type = "f1-micro" # Free tier
+  zone         = "us-central1-a"
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"
+      size  = 10
     }
   }
-  env_vars = {
-    PORT = { value = "5000" }
-    DATABASE_URL = { value = render_postgres.event_db.connection_info.internal_connection_string }
+  network_interface {
+    network = "default"
+    access_config {}
   }
-  num_instances = 1
+  service_account {
+    scopes = ["cloud-platform"]
+  }
 }
 
-output "participation_bot_url" {
-  value = null
+# Cloud Run for Grafana (Free Tier)
+resource "google_cloud_run_service" "grafana" {
+  name     = "grafana"
+  location = "us-central1"
+  template {
+    spec {
+      containers {
+        image = "grafana/grafana:latest"
+        env {
+          name  = "GF_DATABASE_TYPE"
+          value = "postgres"
+        }
+        env {
+          name  = "GF_DATABASE_HOST"
+          value = "${google_sql_database_instance.event_db.public_ip_address}:5432"
+        }
+        env {
+          name  = "GF_DATABASE_NAME"
+          value = "red_legion_event_db"
+        }
+        env {
+          name  = "GF_DATABASE_USER"
+          value = "event_user"
+        }
+        env {
+          name  = "GF_DATABASE_PASSWORD"
+          value = "$(gcloud secrets versions access latest --secret=db-password)"
+        }
+      }
+    }
+  }
+  traffic {
+    percent         = 100
+    latest_revision = true
+  }
 }
 
-output "dashboard_bot_url" {
-  value = render_web_service.dashboard_bot.url
+# Grant Secret Access
+resource "google_secret_manager_secret_iam_member" "participation_bot_secret_access" {
+  for_each  = toset(["discord-token", "db-password"])
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_compute_instance.participation_bot.service_account[0].email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "grafana_secret_access" {
+  secret_id = "db-password"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_cloud_run_service.grafana.service_account_name}"
+}
+
+# Outputs
+output "participation_bot_ip" {
+  value = google_compute_instance.participation_bot.network_interface[0].access_config[0].nat_ip
+}
+
+output "grafana_url" {
+  value = google_cloud_run_service.grafana.status[0].url
+}
+
+output "database_connection_string" {
+  value = "postgresql://event_user:$(gcloud secrets versions access latest --secret=db-password)@${google_sql_database_instance.event_db.public_ip_address}:5432/${google_sql_database.red_legion_event_db.name}"
 }
