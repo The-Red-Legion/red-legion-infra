@@ -13,6 +13,11 @@ data "google_secret_manager_secret_version" "grafana_admin_password" {
   secret  = "grafana-admin-password"
   version = "latest"
 }
+
+data "google_secret_manager_secret_version" "ssh_public_key" {
+  secret  = "ssh-public-key"
+  version = "latest"
+}
 # Create a VPC network
 resource "google_compute_network" "red_legion_vpc" {
   name                    = "red-legion-vpc"
@@ -92,6 +97,9 @@ resource "google_compute_instance" "participation_bot" {
   }
   service_account {
     scopes = ["cloud-platform"]
+  }
+  metadata = {
+    ssh-keys = "ubuntu:${data.google_secret_manager_secret_version.ssh_public_key.secret_data}"
   }
 }
 
@@ -199,7 +207,7 @@ resource "google_secret_manager_secret_iam_member" "grafana_admin_password_acces
 
 # Grant Secret Access for Participation Bot
 resource "google_secret_manager_secret_iam_member" "participation_bot_secret_access" {
-  for_each  = toset(["discord-token", "db-password"])
+  for_each  = toset(["discord-token", "db-password", "ssh-public-key"])
   secret_id = each.value
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_compute_instance.participation_bot.service_account[0].email}"
