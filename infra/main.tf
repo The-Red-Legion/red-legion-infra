@@ -82,7 +82,7 @@ resource "google_compute_instance" "participation_bot" {
   zone         = "us-central1-a"
   boot_disk {
     initialize_params {
-      image = "debian-cloud/debian-11"
+      image = "ubuntu-os-cloud/ubuntu-2204"
       size  = 10
     }
   }
@@ -102,7 +102,7 @@ resource "google_cloud_run_service" "grafana" {
   template {
     spec {
       service_account_name = "60953116087-compute@developer.gserviceaccount.com"
-      timeout_seconds     = 600
+      timeout_seconds      = 600
       containers {
         image = "grafana/grafana:10.0.0"
         env {
@@ -158,8 +158,8 @@ resource "google_cloud_run_service" "grafana" {
     metadata {
       annotations = {
         "run.googleapis.com/vpc-access-connector" = google_vpc_access_connector.cloud_run_connector.id
-        "run.googleapis.com/vpc-access-egress"   = "all-traffic"
-        "run.googleapis.com/ingress"             = "all"
+        "run.googleapis.com/vpc-access-egress"    = "all-traffic"
+        "run.googleapis.com/ingress"              = "all"
       }
     }
   }
@@ -239,4 +239,8 @@ output "grafana_url" {
 output "database_connection_string" {
   value     = "postgresql://event_user:${data.google_secret_manager_secret_version.db_password.secret_data}@${google_sql_database_instance.event_db.private_ip_address}:5432/${google_sql_database.red_legion_event_db.name}"
   sensitive = true
+}
+
+output "sql_private_ip" {
+  value = google_sql_database_instance.event_db.private_ip_address
 }
