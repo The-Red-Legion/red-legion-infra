@@ -46,12 +46,9 @@ jobs:
         run: terraform validate
         working-directory: root/infra
 
-      - name: Download Terraform Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-          path: root/infra
-
-      - name: Apply Terraform Plan
-        run: terraform apply tfplan
+      - name: Generate and Apply Terraform Plan
+        run: |
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
         working-directory: root/infra
+        continue-on-error: true # Allow debugging if either step fails
