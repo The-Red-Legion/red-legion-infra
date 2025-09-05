@@ -213,7 +213,7 @@ resource "google_compute_firewall" "allow_sql" {
     protocol = "tcp"
     ports    = ["5432"]
   }
-  source_ranges = ["10.8.0.0/28"]
+  source_ranges = ["10.128.0.0/9"]
   target_tags   = ["cloud-sql"]
 }
 

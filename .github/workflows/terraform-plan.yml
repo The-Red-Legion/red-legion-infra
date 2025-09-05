@@ -47,3 +47,11 @@ jobs:
       - name: Generate Terraform Plan
         run: terraform plan -out=tfplan
         working-directory: root/infra
+
+      - name: Post Terraform Plan to PR
+        run: |
+          terraform show -no-color tfplan > tfplan.txt
+          gh pr comment --body-file tfplan.txt
+        working-directory: root/infra
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
