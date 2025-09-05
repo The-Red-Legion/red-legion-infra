@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          path: root
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -30,12 +32,26 @@ jobs:
       - name: Configure GCP Project
         run: |
           gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+        working-directory: root/infra
+
+      - name: Check directory contents
+        run: ls -la ./infra || ls -la .
+        working-directory: root
 
       - name: Initialize Terraform
         run: terraform init
+        working-directory: root/infra
 
       - name: Validate Terraform Configuration
         run: terraform validate
+        working-directory: root/infra
 
-      - name: Apply Terraform Changes
-        run: terraform apply -auto-approve
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: root/infra
+
+      - name: Apply Terraform Plan
+        run: terraform apply tfplan
+        working-directory: root/infra
