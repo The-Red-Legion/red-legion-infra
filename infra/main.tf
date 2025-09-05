@@ -217,6 +217,16 @@ resource "google_compute_firewall" "allow_sql" {
   target_tags   = ["cloud-sql"]
 }
 
+resource "google_compute_firewall" "allow_ssh" {
+  name    = "allow-ssh"
+  network = google_compute_network.red_legion_vpc.name
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+  source_ranges = ["0.0.0.0/0"]
+}
+
 # Outputs
 output "participation_bot_ip" {
   value = google_compute_instance.participation_bot.network_interface[0].access_config[0].nat_ip
