@@ -13,7 +13,6 @@ data "google_secret_manager_secret_version" "grafana_admin_password" {
   secret  = "grafana-admin-password"
   version = "latest"
 }
-
 # Create a VPC network
 resource "google_compute_network" "red_legion_vpc" {
   name                    = "red-legion-vpc"
@@ -73,7 +72,7 @@ resource "google_sql_database" "red_legion_event_db" {
 resource "google_sql_user" "event_user" {
   name     = "event_user"
   instance = google_sql_database_instance.event_db.name
-  password = var.db_password
+  password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
 # Compute Engine for Participation Bot (Free Tier)
@@ -105,7 +104,7 @@ resource "google_cloud_run_service" "grafana" {
       service_account_name = "60953116087-compute@developer.gserviceaccount.com"
       timeout_seconds     = 600
       containers {
-        image = "grafana/grafana:10.0.0" # Specific version to avoid latest issues
+        image = "grafana/grafana:10.0.0"
         env {
           name  = "GF_DATABASE_TYPE"
           value = "postgres"
@@ -136,7 +135,7 @@ resource "google_cloud_run_service" "grafana" {
         }
         env {
           name  = "GF_SERVER_ROOT_URL"
-          value = "http://localhost:8080" # Ensure correct port binding
+          value = "http://localhost:8080"
         }
         env {
           name  = "GF_LOG_LEVEL"
@@ -148,7 +147,7 @@ resource "google_cloud_run_service" "grafana" {
         }
         env {
           name  = "GF_SECURITY_ADMIN_USER"
-          value = "redlegionadmin"
+          value = "admin"
         }
         env {
           name  = "GF_SECURITY_ADMIN_PASSWORD"

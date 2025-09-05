@@ -3,9 +3,4 @@ variable "gcp_project_id" {
   type        = string
 }
 
-variable "db_password" {
-  description = "Password for Cloud SQL database user"
-  type        = string
-  sensitive   = true
-}
 
