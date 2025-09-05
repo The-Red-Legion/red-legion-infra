@@ -30,9 +30,6 @@ jobs:
       - name: Configure GCP Project
         run: |
           gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
-          gcloud auth list # Debug: List authenticated accounts
-          gcloud iam service-accounts describe terraform@rl-prod-471116.iam.gserviceaccount.com --project=${{ secrets.GCP_PROJECT_ID }} # Verify service account
-          gcloud secrets versions access latest --secret=discord-token --project=${{ secrets.GCP_PROJECT_ID }} # Test secret access
         working-directory: root/infra
 
       - name: Check directory contents
@@ -49,17 +46,4 @@ jobs:
 
       - name: Generate Terraform Plan
         run: terraform plan -out=tfplan
-        working-directory: root/infra
-        continue-on-error: true # Allow debugging even if plan fails
-
-      - name: Upload Terraform Plan (if successful)
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan
-          path: root/infra/tfplan
-
-      - name: Display Plan Output
-        if: failure()
-        run: cat tfplan || echo "No plan file generated due to errors"
         working-directory: root/infra
