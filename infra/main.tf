@@ -82,7 +82,7 @@ resource "google_compute_instance" "participation_bot" {
   zone         = "us-central1-a"
   boot_disk {
     initialize_params {
-      image = "ubuntu-os-cloud/ubuntu-2204"
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
       size  = 10
     }
   }
