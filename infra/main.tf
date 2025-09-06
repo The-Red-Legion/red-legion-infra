@@ -178,6 +178,7 @@ resource "google_compute_instance" "arccorp_compute" {
   service_account {
     scopes = ["cloud-platform"]
   }
+  tags = ["cloud-sql"]
   metadata = {
     ssh-keys = "ubuntu:${tls_private_key.bot_ssh_key.public_key_openssh}"
   }
@@ -315,7 +316,7 @@ resource "google_secret_manager_secret_iam_member" "arccorp_compute_generated_se
   depends_on = [google_compute_instance.arccorp_compute]
 }
 
-# Firewall rule to allow Cloud SQL traffic
+# Firewall rule to allow Cloud SQL traffic from VM
 resource "google_compute_firewall" "allow_sql" {
   name    = "allow-cloud-sql"
   network = google_compute_network.arccorp_vpc.name
@@ -323,8 +324,23 @@ resource "google_compute_firewall" "allow_sql" {
     protocol = "tcp"
     ports    = ["5432"]
   }
+  source_tags = ["cloud-sql"]
+}
+
+# Alternative rule: allow all internal VPC traffic (more permissive)
+resource "google_compute_firewall" "allow_internal" {
+  name    = "allow-internal"
+  network = google_compute_network.arccorp_vpc.name
+  allow {
+    protocol = "tcp"
+  }
+  allow {
+    protocol = "udp"
+  }
+  allow {
+    protocol = "icmp"
+  }
   source_ranges = ["10.128.0.0/9"]
-  target_tags   = ["cloud-sql"]
 }
 
 resource "google_compute_firewall" "allow_ssh" {
