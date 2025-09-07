@@ -126,8 +126,16 @@ resource "google_sql_database_instance" "arccorp_data_nexus" {
     tier      = "db-f1-micro"
     disk_size = 10
     ip_configuration {
-      ipv4_enabled    = false
+      ipv4_enabled    = true
       private_network = google_compute_network.arccorp_vpc.self_link
+      authorized_networks {
+        name  = "arccorp-compute-vm"
+        value = "${google_compute_instance.arccorp_compute.network_interface[0].access_config[0].nat_ip}/32"
+      }
+      authorized_networks {
+        name  = "development-access"
+        value = "162.192.18.65/32"  # Your current IP for secure access
+      }
     }
     backup_configuration {
       enabled = false
