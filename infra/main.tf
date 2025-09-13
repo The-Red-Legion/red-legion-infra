@@ -133,8 +133,12 @@ resource "google_sql_database_instance" "arccorp_data_nexus" {
         value = "${google_compute_instance.arccorp_compute.network_interface[0].access_config[0].nat_ip}/32"
       }
       authorized_networks {
+        name  = "arccorp-web-server-vm"
+        value = "${google_compute_instance.arccorp_web_server.network_interface[0].access_config[0].nat_ip}/32"
+      }
+      authorized_networks {
         name  = "development-access"
-        value = "162.192.18.65/32"  # Your current IP for secure access
+        value = "71.205.246.234/32"  # Updated IP for secure access
       }
     }
     backup_configuration {
@@ -186,7 +190,31 @@ resource "google_compute_instance" "arccorp_compute" {
   service_account {
     scopes = ["cloud-platform"]
   }
-  tags = ["cloud-sql"]
+  tags = ["cloud-sql", "bot-server"]
+  metadata = {
+    ssh-keys = "ubuntu:${tls_private_key.bot_ssh_key.public_key_openssh}"
+  }
+}
+
+# Compute Engine for Web Server (Free Tier)
+resource "google_compute_instance" "arccorp_web_server" {
+  name         = "arccorp-web-server"
+  machine_type = "f1-micro"
+  zone         = "us-central1-a"
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      size  = 10
+    }
+  }
+  network_interface {
+    network = google_compute_network.arccorp_vpc.name
+    access_config {}
+  }
+  service_account {
+    scopes = ["cloud-platform"]
+  }
+  tags = ["cloud-sql", "web-server"]
   metadata = {
     ssh-keys = "ubuntu:${tls_private_key.bot_ssh_key.public_key_openssh}"
   }
@@ -324,6 +352,29 @@ resource "google_secret_manager_secret_iam_member" "arccorp_compute_generated_se
   depends_on = [google_compute_instance.arccorp_compute]
 }
 
+# Grant Secret Access for Web Server (needs database and Discord token access)
+resource "google_secret_manager_secret_iam_member" "arccorp_web_server_secret_access" {
+  for_each  = toset(["discord-token"])  # Only include existing secrets
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_compute_instance.arccorp_web_server.service_account[0].email}"
+}
+
+# Add IAM permissions for web server to access auto-generated secrets
+resource "google_secret_manager_secret_iam_member" "arccorp_web_server_generated_secrets" {
+  for_each  = {
+    database-connection-string = google_secret_manager_secret.database_connection_string.secret_id
+    ssh-private-key           = google_secret_manager_secret.ssh_private_key.secret_id
+    ssh-public-key            = google_secret_manager_secret.ssh_public_key.secret_id
+    db-password                = google_secret_manager_secret.db_password.secret_id
+  }
+  
+  secret_id  = each.value
+  role       = "roles/secretmanager.secretAccessor"
+  member     = "serviceAccount:${google_compute_instance.arccorp_web_server.service_account[0].email}"
+  depends_on = [google_compute_instance.arccorp_web_server]
+}
+
 # Firewall rule to allow Cloud SQL traffic from VM
 resource "google_compute_firewall" "allow_sql" {
   name    = "allow-cloud-sql"
@@ -361,10 +412,54 @@ resource "google_compute_firewall" "allow_ssh" {
   source_ranges = ["0.0.0.0/0"]
 }
 
+# Firewall rule to allow HTTP/HTTPS traffic to web server
+resource "google_compute_firewall" "allow_web_traffic" {
+  name    = "allow-web-traffic"
+  network = google_compute_network.arccorp_vpc.name
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443", "8000"]
+  }
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["web-server"]
+}
+
+# Firewall rule to allow bot API traffic between instances
+resource "google_compute_firewall" "allow_bot_api_internal" {
+  name    = "allow-bot-api-internal"
+  network = google_compute_network.arccorp_vpc.name
+  allow {
+    protocol = "tcp"
+    ports    = ["8001"]
+  }
+  source_tags = ["web-server"]
+  target_tags = ["bot-server"]
+}
+
 # Outputs
 output "arccorp_compute_ip" {
   description = "External IP of the participation bot instance"
   value       = google_compute_instance.arccorp_compute.network_interface[0].access_config[0].nat_ip
+}
+
+output "arccorp_web_server_ip" {
+  description = "External IP of the web server instance"
+  value       = google_compute_instance.arccorp_web_server.network_interface[0].access_config[0].nat_ip
+}
+
+output "arccorp_web_server_internal_ip" {
+  description = "Internal IP of the web server instance"
+  value       = google_compute_instance.arccorp_web_server.network_interface[0].network_ip
+}
+
+output "web_server_url" {
+  description = "URL to access the web server application"
+  value       = "http://${google_compute_instance.arccorp_web_server.network_interface[0].access_config[0].nat_ip}:8000"
+}
+
+output "bot_api_internal_url" {
+  description = "Internal URL for web server to connect to bot API"
+  value       = "http://${google_compute_instance.arccorp_compute.network_interface[0].network_ip}:8001"
 }
 
 output "grafana_url" {
