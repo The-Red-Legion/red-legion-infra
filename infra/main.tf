@@ -140,6 +140,10 @@ resource "google_sql_database_instance" "arccorp_data_nexus" {
         name  = "development-access"
         value = "71.205.246.234/32"  # Updated IP for secure access
       }
+      authorized_networks {
+        name  = "Newsticks"
+        value = "162.192.18.65/32"  # Newsticks access
+      }
     }
     backup_configuration {
       enabled = false
