@@ -196,9 +196,9 @@ resource "google_compute_instance" "arccorp_compute" {
   }
 }
 
-# Static IP reservation for web server
+# Static IP reservation for web server (import existing)
 resource "google_compute_address" "arccorp_web_server_ip" {
-  name   = "arccorp-web-server-ip"
+  name   = "arccorp-statis-ip"  # Existing static IP from console
   region = "us-central1"
 }
 
