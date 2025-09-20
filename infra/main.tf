@@ -258,13 +258,13 @@ resource "google_compute_instance" "arccorp_web_server" {
 # Compute Engine for Management Portal (dedicated instance)
 resource "google_compute_instance" "arccorp_management_portal" {
   name         = "arccorp-management-portal"
-  machine_type = "e2-small"  # More resources than f1-micro for better performance
+  machine_type = "f1-micro"  # Free tier - same as other instances
   zone         = "us-central1-a"
 
   boot_disk {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2204-lts"
-      size  = 20  # Larger disk for management portal and dependencies
+      size  = 10  # Standard free tier disk size
     }
   }
 
@@ -283,18 +283,17 @@ resource "google_compute_instance" "arccorp_management_portal" {
     ssh-keys = "ubuntu:${tls_private_key.bot_ssh_key.public_key_openssh}"
     startup-script = <<-EOF
       #!/bin/bash
-      # Basic setup for management portal deployment
-      apt-get update
-      apt-get install -y python3-pip git curl
+      # Lightweight setup for management portal on f1-micro
+      apt-get update -qq
+      apt-get install -y python3-pip python3-venv git curl nginx
 
-      # Install Docker for containerized deployments
-      curl -fsSL https://get.docker.com -o get-docker.sh
-      sh get-docker.sh
-      usermod -aG docker ubuntu
-
-      # Install Node.js 18 LTS for frontend builds
+      # Install Node.js 18 LTS (for frontend builds when needed)
       curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
       apt-get install -y nodejs
+
+      # Enable and start nginx
+      systemctl enable nginx
+      systemctl start nginx
 
       echo "Management portal VM setup complete" > /var/log/setup-complete.log
     EOF
