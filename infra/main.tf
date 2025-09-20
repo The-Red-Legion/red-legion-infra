@@ -137,6 +137,10 @@ resource "google_sql_database_instance" "arccorp_data_nexus" {
         value = "${google_compute_instance.arccorp_web_server.network_interface[0].access_config[0].nat_ip}/32"
       }
       authorized_networks {
+        name  = "arccorp-management-portal-vm"
+        value = "${google_compute_instance.arccorp_management_portal.network_interface[0].access_config[0].nat_ip}/32"
+      }
+      authorized_networks {
         name  = "development-access"
         value = "71.205.246.234/32"  # Updated IP for secure access
       }
@@ -247,6 +251,52 @@ resource "google_compute_instance" "arccorp_web_server" {
       # Ensure SSH is responsive
       systemctl restart ssh
       echo "VM startup complete - management portal cleaned" > /var/log/startup-complete.log
+    EOF
+  }
+}
+
+# Compute Engine for Management Portal (dedicated instance)
+resource "google_compute_instance" "arccorp_management_portal" {
+  name         = "arccorp-management-portal"
+  machine_type = "e2-small"  # More resources than f1-micro for better performance
+  zone         = "us-central1-a"
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      size  = 20  # Larger disk for management portal and dependencies
+    }
+  }
+
+  network_interface {
+    network = google_compute_network.arccorp_vpc.name
+    access_config {}  # Ephemeral IP - can add static IP later if needed
+  }
+
+  service_account {
+    scopes = ["cloud-platform"]
+  }
+
+  tags = ["cloud-sql", "management-portal"]
+
+  metadata = {
+    ssh-keys = "ubuntu:${tls_private_key.bot_ssh_key.public_key_openssh}"
+    startup-script = <<-EOF
+      #!/bin/bash
+      # Basic setup for management portal deployment
+      apt-get update
+      apt-get install -y python3-pip git curl
+
+      # Install Docker for containerized deployments
+      curl -fsSL https://get.docker.com -o get-docker.sh
+      sh get-docker.sh
+      usermod -aG docker ubuntu
+
+      # Install Node.js 18 LTS for frontend builds
+      curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+      apt-get install -y nodejs
+
+      echo "Management portal VM setup complete" > /var/log/setup-complete.log
     EOF
   }
 }
@@ -399,11 +449,34 @@ resource "google_secret_manager_secret_iam_member" "arccorp_web_server_generated
     ssh-public-key            = google_secret_manager_secret.ssh_public_key.secret_id
     db-password                = google_secret_manager_secret.db_password.secret_id
   }
-  
+
   secret_id  = each.value
   role       = "roles/secretmanager.secretAccessor"
   member     = "serviceAccount:${google_compute_instance.arccorp_web_server.service_account[0].email}"
   depends_on = [google_compute_instance.arccorp_web_server]
+}
+
+# Grant Secret Access for Management Portal
+resource "google_secret_manager_secret_iam_member" "arccorp_management_portal_secret_access" {
+  for_each  = toset(["discord-token"])  # Discord token access for management portal
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_compute_instance.arccorp_management_portal.service_account[0].email}"
+}
+
+# Add IAM permissions for management portal to access auto-generated secrets
+resource "google_secret_manager_secret_iam_member" "arccorp_management_portal_generated_secrets" {
+  for_each  = {
+    database-connection-string = google_secret_manager_secret.database_connection_string.secret_id
+    ssh-private-key           = google_secret_manager_secret.ssh_private_key.secret_id
+    ssh-public-key            = google_secret_manager_secret.ssh_public_key.secret_id
+    db-password                = google_secret_manager_secret.db_password.secret_id
+  }
+
+  secret_id  = each.value
+  role       = "roles/secretmanager.secretAccessor"
+  member     = "serviceAccount:${google_compute_instance.arccorp_management_portal.service_account[0].email}"
+  depends_on = [google_compute_instance.arccorp_management_portal]
 }
 
 # Firewall rule to allow Cloud SQL traffic from VM
@@ -467,6 +540,18 @@ resource "google_compute_firewall" "allow_bot_api_internal" {
   target_tags = ["bot-server"]
 }
 
+# Firewall rule to allow management portal traffic
+resource "google_compute_firewall" "allow_management_portal" {
+  name    = "allow-management-portal"
+  network = google_compute_network.arccorp_vpc.name
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443", "8000", "8080"]  # HTTP, HTTPS, and common app ports
+  }
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["management-portal"]
+}
+
 # Outputs
 output "arccorp_compute_ip" {
   description = "External IP of the participation bot instance"
@@ -481,6 +566,16 @@ output "arccorp_web_server_ip" {
 output "arccorp_web_server_internal_ip" {
   description = "Internal IP of the web server instance"
   value       = google_compute_instance.arccorp_web_server.network_interface[0].network_ip
+}
+
+output "arccorp_management_portal_ip" {
+  description = "External IP of the management portal instance"
+  value       = google_compute_instance.arccorp_management_portal.network_interface[0].access_config[0].nat_ip
+}
+
+output "arccorp_management_portal_internal_ip" {
+  description = "Internal IP of the management portal instance"
+  value       = google_compute_instance.arccorp_management_portal.network_interface[0].network_ip
 }
 
 output "web_server_url" {
