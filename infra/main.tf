@@ -196,27 +196,54 @@ resource "google_compute_instance" "arccorp_compute" {
   }
 }
 
+# Static IP reservation for web server
+resource "google_compute_address" "arccorp_web_server_ip" {
+  name   = "arccorp-web-server-ip"
+  region = "us-central1"
+}
+
 # Compute Engine for Web Server (Free Tier)
 resource "google_compute_instance" "arccorp_web_server" {
   name         = "arccorp-web-server"
   machine_type = "f1-micro"
   zone         = "us-central1-a"
+
   boot_disk {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2204-lts"
-      size  = 10
+      size  = 15  # Slightly larger for clean deployment
     }
   }
+
   network_interface {
     network = google_compute_network.arccorp_vpc.name
-    access_config {}
+    access_config {
+      nat_ip = google_compute_address.arccorp_web_server_ip.address
+    }
   }
+
   service_account {
     scopes = ["cloud-platform"]
   }
+
   tags = ["cloud-sql", "web-server"]
+
   metadata = {
     ssh-keys = "ubuntu:${tls_private_key.bot_ssh_key.public_key_openssh}"
+    startup-script = <<-EOF
+      #!/bin/bash
+      # Clean up any existing management portal services immediately
+      systemctl stop red-legion-management-portal-backend 2>/dev/null || true
+      systemctl disable red-legion-management-portal-backend 2>/dev/null || true
+      rm -f /etc/systemd/system/red-legion-management-portal-*.service
+      systemctl daemon-reload
+      pkill -f red-legion || true
+      rm -rf /opt/red-legion-management-portal/ || true
+
+      # Ensure SSH is responsive
+      systemctl restart ssh
+      echo "VM startup complete - management portal cleaned" > /var/log/startup-complete.log
+    EOF
   }
 }
 
@@ -443,8 +470,8 @@ output "arccorp_compute_ip" {
 }
 
 output "arccorp_web_server_ip" {
-  description = "External IP of the web server instance"
-  value       = google_compute_instance.arccorp_web_server.network_interface[0].access_config[0].nat_ip
+  description = "Static external IP of the web server instance"
+  value       = google_compute_address.arccorp_web_server_ip.address
 }
 
 output "arccorp_web_server_internal_ip" {
@@ -454,7 +481,7 @@ output "arccorp_web_server_internal_ip" {
 
 output "web_server_url" {
   description = "URL to access the web server application"
-  value       = "http://${google_compute_instance.arccorp_web_server.network_interface[0].access_config[0].nat_ip}:8000"
+  value       = "http://${google_compute_address.arccorp_web_server_ip.address}"
 }
 
 output "bot_api_internal_url" {
